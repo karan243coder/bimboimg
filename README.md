@@ -4,14 +4,48 @@ Koyeb **free tier (512 MB / 0.1 vCPU)** ke liye specially tuned.
 
 ---
 
+## 🔥 v2 — OOM fix (exit 137)
+
+**Kya hua tha:** deploy successful, bot chala, par inference par
+`Application exited with code 137` = OOM kill.
+
+**Root cause (measured):**
+```
+RMBG-1.4 ka ONNX graph 1024x1024 par HARD-CODED hai
+inference @1024 -> peak 603 MB    <-- Koyeb limit 512 MB
+```
+Model file 44 MB hai, par **activations** 600 MB le jaate hain.
+
+**Fix:** graph ke H/W dims ko dynamic banaya (`onnx` se patch, build-time par):
+
+| Input | Peak RAM | Time | IoU vs 1024 |
+|---|---|---|---|
+| 1024 | 603 MB ❌ | 5.5s | 1.000 |
+| 704 | 423 MB | 2.1s | 0.937 |
+| **640** ⭐ | **416 MB ✅** | **1.8s** | **0.938** |
+| 512 | 372 MB ✅ | 1.1s | 0.938 |
+
+**640 = default.** 3x tez, 190 MB kam, quality me aankh se farak nahi.
+
+Saath me:
+- `ORT_ENABLE_BASIC` (ALL kuch nodes fuse karke RAM badhata hai)
+- `malloc_trim(0)` har job ke baad — RSS actually OS ko wapas
+- Pre-flight RAM check — 400 MB se upar ho to job se pehle unload
+- Idle unload 180s → **90s**
+- Model **build-time** par download+patch — runtime spike zero
+
+**Verified:** 3 consecutive runs → peak **394 MB**, steady 168 MB, **koi leak nahi**.
+
+---
+
 ## ⚠️ Pehle ye padho — honest reality check
 
 Maine actual test kiya, ye numbers real hain:
 
 | Cheez | Free tier par | Verdict |
 |---|---|---|
-| RAM (model loaded) | **159 MB** / 512 MB | ✅ aaram se fit |
-| Background remove | **~5.5 s/image** (is sandbox par) | ✅ theek |
+| RAM peak (inference) | **394 MB** / 512 MB | ✅ safe (fix ke baad) |
+| Background remove | **~1.9 s/image** | ✅ tez |
 | BG remove on 0.1 vCPU | **~15-25 s/image** | ⚠️ slow par chalega |
 | Convert / compress / upscale | < 1 s | ✅ instant |
 | Text remove (OCR) | ~1-2 s | ✅ theek |

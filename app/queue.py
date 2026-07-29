@@ -66,6 +66,12 @@ class JobQueue:
             job = await self.q.get()
             self.active += 1
             try:
+                # PRE-FLIGHT: RAM zyada hai to pehle free karo, warna OOM kill
+                r = engine.ram_mb()
+                if r > C.RAM_SOFT_LIMIT:
+                    log.warning("pre-flight RAM %.0f MB > %d — freeing", r, C.RAM_SOFT_LIMIT)
+                    engine.force_unload()
+                    await asyncio.sleep(0.3)
                 # CPU-bound kaam thread me — event loop block na ho
                 res = await asyncio.wait_for(
                     loop.run_in_executor(None, job.fn), timeout=C.JOB_TIMEOUT
@@ -87,6 +93,14 @@ class JobQueue:
             finally:
                 self.active -= 1
                 self.q.task_done()
+                # har job ke baad allocator ko free karne ka mauka do
+                import gc
+                gc.collect()
+                try:
+                    import ctypes
+                    ctypes.CDLL("libc.so.6").malloc_trim(0)   # glibc: RSS wapas OS ko
+                except Exception:
+                    pass
 
     async def _janitor(self):
         """Idle par model unload + RAM report."""
@@ -95,10 +109,9 @@ class JobQueue:
             if self.active == 0 and self.q.empty():
                 engine.maybe_unload()
             r = engine.ram_mb()
-            if r > C.MAX_RAM_MB * 0.88:
-                log.warning("RAM high: %.0f MB — unloading", r)
-                engine._last_used = 0
-                engine.maybe_unload()
+            if r > C.RAM_SOFT_LIMIT:
+                log.warning("RAM high: %.0f MB — force unload", r)
+                engine.force_unload()
 
     def stats(self) -> dict:
         up = time.time() - self._t0

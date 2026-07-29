@@ -24,6 +24,7 @@ from . import config as C
 log = logging.getLogger("engine")
 
 _sess = None
+_dynamic = False
 _sess_lock = threading.Lock()
 _last_used = 0.0
 
@@ -43,24 +44,68 @@ def _download(url: str, path: str):
     return path
 
 
+def _make_dynamic(src: str, dst: str) -> str:
+    """RMBG ka graph 1024x1024 par HARD-CODED hai.
+
+    1024 par inference ~600 MB peak leta hai -> 512 MB tier par OOM (exit 137).
+    Graph ke H/W dims ko dynamic banane se chhoti input chalti hai:
+        1024 -> 603 MB / 5.5 s
+         640 -> 416 MB / 1.8 s   (IoU 0.94 vs 1024, aankh se farak nahi)
+    Ye ek baar hota hai, patched file cache ho jaati hai.
+    """
+    if os.path.exists(dst) and os.path.getsize(dst) > 1_000_000:
+        return dst
+    try:
+        import onnx
+        m = onnx.load(src)
+        for t in list(m.graph.input) + list(m.graph.output):
+            dims = t.type.tensor_type.shape.dim
+            for d, name in zip(dims[2:4], ("H", "W")):
+                d.ClearField("dim_value")
+                d.dim_param = name
+        onnx.save(m, dst)
+        log.info("patched model to dynamic H/W")
+        return dst
+    except Exception as e:
+        log.warning("dynamic patch failed (%s) — 1024 fixed mode", e)
+        return src
+
+
 def get_session():
     """Lazy-load ONNX session. Thread-safe."""
-    global _sess, _last_used
+    global _sess, _last_used, _dynamic
     with _sess_lock:
         if _sess is None:
             import onnxruntime as ort
 
-            path = _download(C.RMBG_URL, os.path.join(C.MODEL_DIR, "rmbg_q.onnx"))
+            raw = _download(C.RMBG_URL, os.path.join(C.MODEL_DIR, "rmbg_q.onnx"))
+            path = _make_dynamic(raw, os.path.join(C.MODEL_DIR, "rmbg_dyn.onnx"))
+            _dynamic = path != raw
+
             so = ort.SessionOptions()
-            so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            so.intra_op_num_threads = 1          # 0.1 vCPU — 1 thread hi behtar
+            # ORT_ENABLE_ALL kuch nodes fuse karke memory badha deta hai —
+            # 512 MB par BASIC safer hai
+            so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+            so.intra_op_num_threads = 1
             so.inter_op_num_threads = 1
-            so.enable_mem_pattern = False        # memory spike kam
-            so.enable_cpu_mem_arena = False
+            so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            so.enable_mem_pattern = False       # pre-allocation off
+            so.enable_cpu_mem_arena = False     # arena free karo turant
+            so.add_session_config_entry("session.use_env_allocators", "0")
             _sess = ort.InferenceSession(path, so, providers=["CPUExecutionProvider"])
-            log.info("onnx session ready")
+            log.info("onnx session ready (dynamic=%s, rss=%.0f MB)", _dynamic, ram_mb())
         _last_used = time.time()
         return _sess
+
+
+def _trim():
+    """glibc ko bolo free memory OS ko wapas de (RSS actually girta hai)."""
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 
 
 def maybe_unload():
@@ -68,9 +113,21 @@ def maybe_unload():
     global _sess
     with _sess_lock:
         if _sess is not None and time.time() - _last_used > C.MODEL_IDLE_UNLOAD_SEC:
+            before = ram_mb()
             _sess = None
-            gc.collect()
-            log.info("model unloaded (idle) — RAM freed")
+            _trim()
+            log.info("model unloaded (idle): %.0f -> %.0f MB", before, ram_mb())
+
+
+def force_unload():
+    """Turant free karo — RAM watchdog ke liye."""
+    global _sess
+    with _sess_lock:
+        before = ram_mb()
+        _sess = None
+        _trim()
+        if before - ram_mb() > 5:
+            log.info("force unload: %.0f -> %.0f MB", before, ram_mb())
 
 
 def ram_mb() -> float:
@@ -113,20 +170,30 @@ RMBG_INPUT = 1024
 
 
 def _alpha(im: Image.Image) -> np.ndarray:
-    """RMBG-1.4 se alpha matte (0-255) nikalo, original size me."""
+    """RMBG-1.4 se alpha matte (0-255), original size me.
+
+    Dynamic model ho to C.AI_SIZE par chalta hai (kam RAM, tez).
+    Warna 1024 (jo 512 MB par risky hai — isliye patch zaroori).
+    """
     sess = get_session()
-    n = RMBG_INPUT
+    n = C.AI_SIZE if _dynamic else RMBG_INPUT
+    n = max(256, (n // 32) * 32)              # model stride ke multiple
+
     small = im.convert("RGB").resize((n, n), Image.BILINEAR)
-    x = np.asarray(small, dtype=np.float32) / 255.0
-    x = (x - 0.5)                                  # RMBG normalize
-    x = np.transpose(x, (2, 0, 1))[None]           # NCHW
-    inp = sess.get_inputs()[0].name
-    out = sess.run(None, {inp: x})[0]
+    x = np.asarray(small, dtype=np.float32)
+    x /= 255.0
+    x -= 0.5
+    x = np.ascontiguousarray(np.transpose(x, (2, 0, 1))[None])
+    del small
+
+    out = sess.run(None, {sess.get_inputs()[0].name: x})[0]
+    del x
     m = out[0, 0] if out.ndim == 4 else out[0]
     mn, mx = float(m.min()), float(m.max())
     m = (m - mn) / (mx - mn + 1e-8)
     a = Image.fromarray((m * 255).astype(np.uint8), "L").resize(im.size, Image.BILINEAR)
-    del x, out
+    del out, m
+    gc.collect()
     return np.asarray(a)
 
 
@@ -163,7 +230,7 @@ def remove_bg(data: bytes, bg=None, feather=1, edge_shrink=0) -> bytes:
         fmt = "PNG"
     res = to_bytes(out, fmt)
     del im, a, am, rgb, out
-    gc.collect()
+    _trim()
     return res
 
 

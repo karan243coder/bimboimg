@@ -63,15 +63,28 @@ RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.t
 COPY app ./app
 COPY webapp ./webapp
 
+# Model build-time par download + dynamic-axes patch.
+# Isse pehle request instant hai aur runtime par patching ka RAM spike nahi.
+RUN python -c "\
+import os,urllib.request,onnx;\
+os.makedirs('/opt/models',exist_ok=True);\
+p='/opt/models/rmbg_q.onnx';\
+urllib.request.urlretrieve('https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model_quantized.onnx',p);\
+m=onnx.load(p);\
+[[ (d.ClearField('dim_value'), setattr(d,'dim_param',n)) for d,n in zip(t.type.tensor_type.shape.dim[2:4],('H','W'))] for t in list(m.graph.input)+list(m.graph.output)];\
+onnx.save(m,'/opt/models/rmbg_dyn.onnx');\
+os.remove(p);\
+print('model patched:',os.path.getsize('/opt/models/rmbg_dyn.onnx')//1048576,'MB')"
+
 # non-root user (security)
 RUN useradd -m -u 10001 botuser \
- && mkdir -p /tmp/models /tmp/cache \
- && chown -R botuser:botuser /app /tmp/models /tmp/cache
+ && mkdir -p /tmp/cache \
+ && chown -R botuser:botuser /app /tmp/cache /opt/models
 USER botuser
 
 ENV DB_PATH=/tmp/bot.db \
     CACHE_DIR=/tmp/cache \
-    MODEL_DIR=/tmp/models \
+    MODEL_DIR=/opt/models \
     PORT=8000
 
 EXPOSE 8000
