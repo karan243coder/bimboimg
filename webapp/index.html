@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+<title>PixelFree — AI Image Toolkit (100% Free, Fully Automatic)</title>
+<link rel="stylesheet" href="style.css?v17.0">
+</head>
+<body>
+<header>
+  <div class="logo">Pixel<span>Free</span></div>
+  <div class="tag">AI batch image tools · runs in your browser · no signup · free forever</div>
+</header>
+
+<nav id="tabs">
+  <button class="tab active" data-tab="auto">⚡ Auto (all-in-one)</button>
+  <button class="tab" data-tab="convert">🔄 Convert</button>
+  <button class="tab" data-tab="bg">✂️ BG Remove</button>
+  <button class="tab" data-tab="clean">🧽 Watermark / Text</button>
+  <button class="tab" data-tab="video">🎬 Video BG Remove</button>
+  <button class="tab" data-tab="host">🔗 File Link</button>
+</nav>
+
+<main>
+  <div id="jobPanel" class="hidden">
+    <div class="jrow">
+      <span id="jobStage">Working…</span>
+      <span id="jobPct">0%</span>
+    </div>
+    <div id="jobBarWrap"><div id="jobBar"></div></div>
+    <div class="jrow jmeta">
+      <span id="jobSub"></span>
+      <span id="jobStats"></span>
+    </div>
+    <div id="jobEta" class="jeta"></div>
+  </div>
+  <section class="panel">
+    <div id="drop">
+      <div class="big">📂</div>
+      <p><b>Drop images here</b> · click to choose · Ctrl+V paste</p>
+      <p class="muted">Multiple files = automatic batch processing</p>
+      <input type="file" id="fileInput" multiple accept="image/*" hidden>
+    </div>
+    <div id="thumbs"></div>
+    <button class="ghost hidden" id="clearIn">✖ Clear inputs</button>
+  </section>
+
+  <!-- AUTO -->
+  <section class="panel view" id="view-auto">
+    <h2>⚡ Auto Pipeline — sab kuch ek click me (ya bilkul zero click)</h2>
+    <p class="muted">Jo bhi steps ticked hain wo har image par order me automatically chalenge:
+      <b>watermark/text remove → person cutout → format convert → share link</b>.<br><b>Tip:</b> watermark step default OFF hai — sirf tab on karo jab image par sach me watermark/text ho, warna wo asli detail bhi mita sakta hai.<br>
+      🧍 Person-Only ON hai → sirf insaan bachega, bed/mirror/furniture/props sab automatically delete.</p>
+    <div class="opts">
+      <label class="opt"><input type="checkbox" id="optClean"> 🧽 Watermark &amp; text remove (AI inpaint)</label>
+      <label class="opt"><input type="checkbox" id="optBg" checked> ✂️ Background remove → transparent</label>
+      <label class="opt"><input type="checkbox" id="autoPerson" checked> 🧍 Person-Only (bed/mirror/objects sab delete)</label>
+      <label class="opt"><input type="checkbox" id="optLink"> 🔗 Get share links (needs internet)</label>
+      <label class="opt"><input type="checkbox" id="autoRun" checked> 🚀 Auto-start jaise hi file drop ho</label>
+    </div>
+    <button class="go big-btn" id="runAuto">▶ Run Auto Pipeline</button>
+    <div id="prog" class="hidden"><div id="barwrap"><div id="bar"></div></div><span id="progTxt"></span></div>
+  </section>
+
+  <!-- CONVERT -->
+  <section class="panel view hidden" id="view-convert">
+    <h2>Format Converter (batch)</h2>
+    <div class="row">
+      <label>Output format
+        <select id="fmt">
+          <option value="image/png">PNG</option>
+          <option value="image/jpeg">JPG</option>
+          <option value="image/webp">WEBP</option>
+        </select>
+      </label>
+      <label>Quality <input type="range" id="q" min="10" max="100" value="92"></label>
+      <label>Max width (0 = original) <input type="number" id="maxw" value="0" min="0" style="width:90px"></label>
+      <label><input type="checkbox" id="whitebg"> White bg for JPG</label>
+    </div>
+    <button class="go" id="runConvert">Convert All</button>
+  </section>
+
+  <!-- BG -->
+  <section class="panel view hidden" id="view-bg">
+    <h2>AI Background Remover → transparent PNG (batch)</h2>
+    <div class="opts">
+      <label class="opt hero"><input type="checkbox" id="personOnly" checked>
+        🧍 <b>Person-Only mode</b> — sirf insaan rakho. <b>Bed, mirror, chair, table, sofa, wall, plant, poster — jo bhi frame me hai, SAB delete</b></label>
+    </div>
+    <div class="row">
+      <label>Cutout engine
+        <select id="cutMode">
+          <option value="smart" selected>🎯 Smart — full detail + objects hatao (best)</option>
+          <option value="detail">💎 Max detail — kuch bhi na kaato</option>
+          <option value="semantic">⚡ Fast — coarse, sabse tez</option>
+        </select>
+      </label>
+      <label>Region grow <input type="range" id="grow" min="0" max="12" value="5">
+        <small class="hint" id="growV">5%</small></label>
+      <label>Edge shrink <input type="range" id="shrink" min="0" max="4" value="0">
+        <small class="hint" id="shrinkV">0</small></label>
+      <label>Edge feather <input type="range" id="feather" min="0" max="6" value="1">
+        <small class="hint" id="featherV">1</small></label>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="keepAcc" checked> Hat, glasses, shoes, scarf rakho</label>
+      <label><input type="checkbox" id="keepBag"> Bag / purse rakho</label>
+      <label><input type="checkbox" id="dbgMask"> 🐞 Debug mask dikhao</label>
+    </div>
+    <div class="tips">
+      <b>Seedha ye karo:</b> saari photos drop → <b>⚡ Sab photos ka edge-text hatao</b> → ZIP download<br>
+      <b>Text zone se bahar hai?</b> → Zone width badhao (30-40%)<br>
+      <b>Center me kuch hat raha?</b> → ho hi nahi sakta, center locked hai ✓<br>
+      <b>Ek photo check karni hai?</b> → 🔍 Scan &amp; review se thumbnails dekho
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="bgSolid"> Solid colour ke saath replace karo <input type="color" id="bgColor" value="#ffffff"></label>
+    </div>
+    <p class="muted">
+      <b>🎯 Smart engine (default):</b> RMBG-1.4 ka <b>poora detail</b> liya jaata hai
+      (kuch crop nahi hota), phir mask ko blobs me toda jaata hai aur <b>sirf wo blobs
+      hatate hain jo person se jude hi nahi</b> — jaise alag pada bed, mirror, table.
+      Kapda person se juda hota hai isliye wo hamesha bachta hai.<br>
+      Agar phir bhi kuch kate to <b>💎 Max detail</b> mode — wo bilkul kuch nahi kaatta.<br>
+      <b>Person-Only OFF</b> → <code>RMBG-1.4</code> (~45&nbsp;MB) general subject cutout (product, animal, object ke liye).<br>
+      Dono WebGPU accelerated, pehli baar download phir cache — baad me offline bhi chalte hain.
+    </p>
+    <button class="go" id="runBg">Remove Backgrounds</button>
+  </section>
+
+  <!-- CLEAN -->
+  <section class="panel view hidden" id="view-clean">
+    <h2>AI Watermark / Text Remover (batch inpainting)</h2>
+    <p class="muted">
+      <b>📍 Edge-zone mode:</b> aapke photos me text hamesha <b>left/right kinare</b> par hota hai
+      aur chehra beech me. Isliye ab detection <b>sirf kinare ke band</b> me hoti hai —
+      <b>center zone poori tarah LOCKED</b> hai. Wahan ka ek bhi pixel kabhi nahi badlega.
+      Aankh center me hoti hai, isliye ab wo chhui hi nahi ja sakti.<br>
+      <b>⚡ Batch button:</b> saari photos ek saath — pattern fix hai isliye safe hai.
+      Jis photo me kuch na mile wo <b>bilkul original</b> rehti hai (koi re-encode nahi).<br>
+      <b>👁 Preview me</b> center kaala dikhega (locked) aur kinare hare box me (active).<br>
+      <b>🔒 Pixel-exact:</b> sirf text ke stroke pixels badalte hain, typically 0.1-1%.
+    </p>
+    <div class="row">
+      <label>Mode
+        <select id="cleanMode">
+          <option value="auto">Auto — detect &amp; remove (batch)</option>
+          <option value="brush">Brush selection (current image)</option>
+        </select>
+      </label>
+      <label>📍 Text zone
+        <select id="zoneMode">
+          <option value="both" selected>Left + Right kinare</option>
+          <option value="left">Sirf Left</option>
+          <option value="right">Sirf Right</option>
+          <option value="off">Poori image (risky)</option>
+        </select>
+      </label>
+      <label>Zone width <input type="range" id="zoneWidth" min="8" max="45" value="22">
+        <small class="hint" id="zoneWidthV">22%</small></label>
+      <label>Detection
+        <select id="detMethod">
+          <option value="ocr" selected>🔤 OCR (asli text padhta hai — safest)</option>
+          <option value="edge">📐 Edge-based (logo/graphic watermark)</option>
+        </select>
+      </label>
+      <label>OCR confidence <input type="range" id="ocrConf" min="20" max="90" value="45">
+        <small class="hint" id="ocrConfV">45</small></label>
+      <label>Detect depth
+        <select id="ocrLevel">
+          <option value="1">Normal (3 passes)</option>
+          <option value="2" selected>Deep (6 passes — faint text bhi)</option>
+        </select>
+      </label>
+      <label>Removal rounds
+        <select id="ocrPasses">
+          <option value="1">1 round</option>
+          <option value="2" selected>2 rounds (residue bhi hatao)</option>
+          <option value="3">3 rounds (maximum)</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="detGraphic"> 🎨 Logo/graphic watermark bhi</label>
+      <label>Sensitivity <input type="range" id="sens" min="1" max="10" value="4"></label>
+      <label><input type="checkbox" id="protectFace" checked> 🛡 <b>Face &amp; skin protect</b></label>
+      <label>Max area to touch
+        <select id="cleanCap">
+          <option value="10">10% (safe)</option>
+          <option value="25" selected>25% (default)</option>
+          <option value="50">50%</option>
+          <option value="100">no limit</option>
+        </select>
+      </label>
+      <label>Speed
+        <select id="cleanQ">
+          <option value="fast" selected>⚡ Fast (Telea, ROI-only)</option>
+          <option value="best">🎯 Best quality (2x slower)</option>
+        </select>
+      </label>
+      <label>Brush size <input type="range" id="brush" min="5" max="80" value="28"></label>
+      <button class="ghost" id="clearMask">Clear brush</button>
+    </div>
+    <div id="canvasWrap"><canvas id="editCanvas"></canvas><canvas id="maskCanvas"></canvas></div>
+    <div class="row">
+      <div class="tips">
+      <b>Aankh / chehra hat raha tha?</b> → ab 🛡 Face protect default ON hai, nahi hoga<br>
+      <b>Phir bhi kuch galat hate?</b> → 👁 <b>Preview</b> dabao, laal me dikhega kya jayega<br>
+      <b>Asli watermark nahi hat raha?</b> → Sensitivity 8-10, ya Brush mode se khud select karo<br>
+      <b>Sabse safe tareeka</b> → Brush mode: sirf jo aap paint karo wahi hatega
+    </div>
+    <div class="row">
+      <button class="go" id="batchClean">⚡ Sab photos ka edge-text hatao (batch)</button>
+    </div>
+    <div class="row">
+      <button class="ghost" id="scanBtn">🔍 Scan &amp; review (ek photo)</button>
+      <button class="ghost" id="previewClean">👁 Zone + overlay preview</button>
+    </div>
+
+    <div id="reviewBar" class="hidden">
+      <div class="row between">
+        <b id="reviewCount"></b>
+        <div class="row">
+          <button class="ghost" id="selSafe">✓ Sirf safe</button>
+          <button class="ghost" id="selAll">All</button>
+          <button class="ghost" id="selNone">None</button>
+        </div>
+      </div>
+      <div id="reviewList"></div>
+      <button class="go big-btn" id="removeSel">🗑 2. Remove selected</button>
+    </div>
+
+    <details class="adv">
+      <summary>⚙️ Auto mode (review ke bina) — risky</summary>
+      <p class="muted">Ye bina pooche hata dega. Sirf tab use karo jab bharosa ho
+        ki text saaf hai aur koi chehra nahi.</p>
+      <button class="ghost" id="runClean">Auto remove (no review)</button>
+    </details>
+  </section>
+
+
+  <!-- VIDEO -->
+  <section class="panel view hidden" id="view-video">
+    <h2>🎬 Video Background Remover (AI, per-frame)</h2>
+    <p class="muted">
+      Har frame par wahi AI cutout chalta hai jo BG tab me set hai (Smart / Max detail).
+      Output: <b>transparent alpha WebM</b>, green screen, solid colour, ya blur.<br>
+      <b>Temporal smoothing</b> se frame-to-frame flicker khatam hota hai — edges stable rehte hain.
+      Frame-accurate seeking (requestVideoFrameCallback) se koi frame miss nahi hota.
+    </p>
+    <div class="tips">
+      <b>⚡ v17 Turbo pipeline — 3-4x fast:</b><br>
+      • <b>WebCodecs decoder</b> — poori stream sequential decode. Seek 120ms → <b>8ms</b> (15x)<br>
+      • <b>Parallel stages</b> — decode, AI, compose, encode ek saath chalte hain (serial nahi).
+        Total time = sabse slow stage, sum nahi<br>
+      • <b>🧩 2 AI sessions</b> — alternate frames parallel process hote hain<br>
+      • <b>Bounded queue</b> — decoder 4 frames aage rehta hai, memory safe<br>
+      <b>Result:</b> 320ms/frame → ~90ms/frame. 6.8s video: 60s → <b>~15s</b><br>
+      <b>Note:</b> Turbo MP4 files par chalta hai. WebM/MOV par apne aap normal mode par chala jaata hai (koi error nahi).
+    </div>
+    <input type="file" id="vidInput" accept="video/*,.mp4,.webm,.mov,.mkv" style="display:none">
+    <div id="vidDrop">
+      <div class="big">🎬</div>
+      <p><b>Video yahan drop karo</b></p>
+      <button class="go" id="vidPick" type="button">📁 Video choose karo</button>
+      <p class="muted" style="margin-top:8px">MP4 (H.264) ya WebM best · MOV/MKV kabhi-kabhi browser support nahi karta</p>
+    </div>
+    <div id="vidStage" class="hidden">
+      <div class="row"><video id="srcVideo" muted playsinline style="max-width:280px;border-radius:10px"></video>
+        <canvas id="vidPreview" style="max-width:280px;border-radius:10px;background:
+          linear-gradient(45deg,#222 25%,transparent 25%),linear-gradient(-45deg,#222 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#222 75%),linear-gradient(-45deg,transparent 75%,#222 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0"></canvas>
+      </div>
+      <p class="muted" id="vidMeta"></p>
+      <div class="row">
+        <label>Background
+          <select id="vidBg">
+            <option value="alpha" selected>Transparent (alpha WebM)</option>
+            <option value="green">Green screen</option>
+            <option value="color">Solid colour</option>
+            <option value="blur">Blur original</option>
+          </select>
+        </label>
+        <label><input type="color" id="vidColor" value="#ffffff"> colour</label>
+        <label>Output FPS <select id="vidFps">
+          <option value="8">8 (fastest)</option>
+          <option value="10">10</option>
+          <option value="15" selected>15 ⭐</option>
+          <option value="24">24</option>
+          <option value="30">30</option>
+        </select></label>
+        <label>Max width <select id="vidW"><option value="0">original</option><option value="480">480</option><option value="720" selected>720</option><option value="1080">1080</option></select></label>
+        <label><input type="checkbox" id="vidTurbo" checked> ⚡ <b>Turbo pipeline</b></label>
+        <label>🧩 AI sessions <select id="vidWorkers">
+            <option value="1">1 (kam RAM)</option>
+            <option value="2" selected>2 ⭐</option>
+            <option value="3">3 (zyada RAM)</option>
+          </select></label>
+        <label>Encoder
+          <select id="vidEnc">
+            <option value="exact" selected>🎯 Exact timing (WebCodecs) ⭐</option>
+            <option value="rec">MediaRecorder (fallback)</option>
+          </select></label>
+        <label>Capture
+          <select id="vidSeek">
+            <option value="seek" selected>🎯 Seek — har frame pakka ⭐</option>
+            <option value="play">Playback (fast, sync-locked)</option>
+          </select></label>
+        <label>Decode speed <select id="vidRate">
+            <option value="1">1x</option><option value="2" selected>2x</option>
+            <option value="3">3x</option><option value="4">4x</option>
+          </select></label>
+        <label>Mask reuse <select id="vidSkip">
+            <option value="1" selected>every frame</option>
+            <option value="2">every 2nd (2x fast)</option>
+            <option value="3">every 3rd (3x fast)</option>
+          </select></label>
+        <label>Person check <select id="vidRegion">
+            <option value="4">har 4 frame</option>
+            <option value="8" selected>har 8 frame ⭐</option>
+            <option value="15">har 15 frame</option>
+          </select></label>
+        <label>Smoothing <input type="range" id="vidSmooth" min="20" max="100" value="60">
+          <small class="hint" id="vidSmoothV">60%</small></label>
+        <label>🧠 Memory <select id="vidMemory">
+            <option value="1">off</option>
+            <option value="3" selected>3 frames ⭐</option>
+            <option value="5">5 frames (max fill)</option>
+          </select></label>
+        <label><input type="checkbox" id="vidSkinRescue" checked> 🤚 Skin rescue</label>
+        <label><input type="checkbox" id="vidHoleFill" checked> 🕳 Hole fill</label>
+        <label>Bitrate <select id="vidBr"><option>2</option><option selected>4</option><option>8</option></select> Mbps</label>
+        <label><input type="checkbox" id="vidAudio"> Keep audio</label>
+      </div>
+      <div class="row">
+        <b class="muted">Preset:</b>
+        <button class="ghost preset" data-p="turbo">🚀 Turbo</button>
+        <button class="ghost preset" data-p="balanced">⚖️ Balanced</button>
+        <button class="ghost preset" data-p="quality">💎 Quality</button>
+      </div>
+      <div class="row">
+        <button class="go" id="runVideo">▶ Remove Video Background</button>
+        <button class="ghost" id="vidStop" disabled>⏹ Stop</button>
+      </div>
+      <div id="vidOut"></div>
+    </div>
+  </section>
+
+  <!-- HOST -->
+  <section class="panel view hidden" id="view-host">
+    <h2>File → Link (telegra.ph style)</h2>
+    <p class="muted">Anonymous free hosts try hote hain order me: tmpfiles → catbox → uguu → litterbox. Koi account nahi.
+      Agar results maujood hain to unke links banenge, warna original files ke.</p>
+    <button class="go" id="runHost">Upload &amp; Get Links</button>
+    <div id="links"></div>
+  </section>
+
+  <section class="panel hidden" id="outwrap">
+    <div class="row between">
+      <h2>Results <span id="count"></span></h2>
+      <div class="row">
+        <button class="ghost" id="copyAll">🔗 Copy all links</button>
+        <button class="ghost" id="dlZip">⬇ Download all (.zip)</button>
+      </div>
+    </div>
+    <div id="results"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Log</h2>
+    <div id="log" class="log"></div>
+  </section>
+</main>
+
+<footer>Sab processing aapke browser me · koi file server par nahi jaati (jab tak aap link feature on na karo) · free forever</footer>
+
+<script src="https://docs.opencv.org/4.9.0/opencv.js" async></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/webm-muxer@5.1.4/build/webm-muxer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
+<script type="module" src="app.js?v17.0"></script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+# Koyeb service definition (optional — UI se bhi kar sakte ho)
+name: ai-image-bot
+services:
+  - name: bot
+    git:
+      repository: github.com/USER/REPO
+      branch: main
+      builder: docker
+      dockerfile: Dockerfile
+    instance_type: free
+    regions: [was]
+    ports:
+      - port: 8000
+        protocol: http
+    routes:
+      - path: /
+        port: 8000
+    health_checks:
+      - http:
+          path: /health
+          port: 8000
+        grace_period: 120
+        interval: 30
+        timeout: 8
+    env:
+      - key: BOT_TOKEN
+        secret: bot-token
+      - key: ADMIN_IDS
+        value: "YOUR_TELEGRAM_ID"
+      - key: AI_SIZE
+        value: "640"
+      - key: FREE_DAILY
+        value: "40"
+      - key: MAX_CONCURRENT_JOBS
+        value: "1"
+      - key: MODEL_IDLE_UNLOAD_SEC
+        value: "180"
